@@ -70,6 +70,7 @@ class ScheduledUpdate(models.Model):
     release_date = models.DateField(verbose_name="Release Date")
     major_update = models.BooleanField(verbose_name="Major Update")
     release_description = models.TextField(verbose_name="Release Description")
+    is_released = models.BooleanField(default=False, verbose_name="Is released")
 
     class Meta:
         verbose_name = "Scheduled Update"
@@ -77,3 +78,34 @@ class ScheduledUpdate(models.Model):
 
     def __str__(self):
         return self.update_name
+
+
+class ClientMeeting(models.Model):
+    client_project = models.ForeignKey(
+        ClientProject,
+        on_delete=models.CASCADE,
+        verbose_name="Client project",
+        null=True,
+        blank=True,
+    )
+    description = models.TextField(verbose_name="Client meeting description")
+    client_state = models.CharField(
+        max_length=350, verbose_name="Client state", null=True, blank=True
+    )
+    sentiment_score = models.CharField(
+        max_length=350, verbose_name="Sentiment score", null=True, blank=True
+    )
+    sentiment_magnitude = models.CharField(
+        max_length=350, verbose_name="Sentiment magnitude", null=True, blank=True
+    )
+    meeting_transcriped = models.TextField(
+        verbose_name="Meeting transcriped", null=True, blank=True
+    )
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Timestamp")
+
+    class Meta:
+        verbose_name = "Client meeting"
+        verbose_name_plural = "Client meetings"
+
+    def __str__(self):
+        return f"New client meeting for  - {self.client_state}"

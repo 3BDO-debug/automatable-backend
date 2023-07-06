@@ -1,6 +1,7 @@
 from rest_framework.serializers import ModelSerializer
 from accounts.serializers import UserSerializer
 from . import models
+from cloudinary import CloudinaryImage
 from staff_performance_tracking.serializers import StaffSkillSerializer
 
 
@@ -40,10 +41,39 @@ class ClientProjectSerializer(ModelSerializer):
             }
             for staff_member in instance.staff_members.all()
         ]
+        data[
+            "client_name"
+        ] = f"{instance.client.user.first_name} {instance.client.user.last_name}"
         return data
 
 
 class ClientProjectMilestoneSerializer(ModelSerializer):
     class Meta:
         model = models.ClientProjectMilestone
+        fields = "__all__"
+
+
+class ClientMeetingSerializer(ModelSerializer):
+    class Meta:
+        model = models.ClientMeeting
+        fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super(ClientMeetingSerializer, self).to_representation(instance)
+        print("dasdas", instance.client_project.supervisor.first_name)
+        data["supervisor_data"] = {
+            "fullname": f"{instance.client_project.supervisor.first_name} {instance.client_project.supervisor.last_name}",
+            "profile_pic": CloudinaryImage(
+                str(instance.client_project.supervisor.profile_pic)
+            ).url,
+        }
+        data[
+            "client_name"
+        ] = f"{instance.client_project.client.user.first_name} {instance.client_project.client.user.last_name}"
+        return data
+
+
+class ScheduledUpdateSerializer(ModelSerializer):
+    class Meta:
+        model = models.ScheduledUpdate
         fields = "__all__"

@@ -4,6 +4,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from . import models, serializers
 from accounts.models import User
+from .client_satisfaction_detector import *
+import os
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+from django.conf import settings
 
 # Create your views here.
 
@@ -45,6 +50,39 @@ class ClientsDataHandler(APIView):
         models.Client.objects.get(id=client_id).delete()
 
         return Response(status=status.HTTP_200_OK)
+
+
+class ClientDetailsHandler(APIView):
+    def get(self, request):
+        client_id = int(request.query_params.get("clientId"))
+
+        client = models.Client.objects.get(id=client_id)
+        client_serializer = serializers.ClientSerializer(client, many=False)
+
+        return Response(status=status.HTTP_200_OK, data=client_serializer.data)
+
+    def put(self, request):
+        client = models.Client.objects.get(id=int(request.data.get("clientId")))
+        related_user = client.user
+
+        first_name = request.data.get("firstName")
+        last_name = request.data.get("lastName")
+        email = request.data.get("email")
+        phone_number = request.data.get("phoneNumber")
+        gov_id = request.data.get("govId")
+
+        """ Update the client instance """
+        related_user.first_name = first_name
+        related_user.last_name = last_name
+        related_user.email = email
+        related_user.phone_number = phone_number
+        related_user.gov_id = gov_id
+
+        related_user.save()
+
+        client_serializer = serializers.ClientSerializer(client, many=False)
+
+        return Response(status=status.HTTP_200_OK, data=client_serializer.data)
 
 
 class ClientsProjectsHandler(APIView):
@@ -130,5 +168,83 @@ class ClientProjectMilestonesHandler(APIView):
 
         milestone_obj.related_tasks.set(milestone_tasks)
         milestone_obj.save()
+
+        return Response(status=status.HTTP_200_OK)
+
+
+class ScheduledUpdatesHandler(APIView):
+    def get(self, request):
+        scheduled_updates = models.ScheduledUpdate.objects.all()
+        scheduled_updates_serializer = serializers.ScheduledUpdateSerializer(
+            scheduled_updates, many=True
+        )
+
+        return Response(
+            status=status.HTTP_200_OK, data=scheduled_updates_serializer.data
+        )
+
+    def post(self, request):
+        serializer = serializers.ScheduledUpdateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            print(serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ClientMeetingsHandler(APIView):
+    def get(self, request):
+        client_project = models.ClientProject.objects.get(
+            id=int(request.GET.get("clientProjectId"))
+        )
+        client_meetings = models.ClientMeeting.objects.filter(
+            client_project=client_project
+        ).order_by("-timestamp")
+        client_meetings_serializer = serializers.ClientMeetingSerializer(
+            client_meetings, many=True
+        )
+
+        return Response(status=status.HTTP_200_OK, data=client_meetings_serializer.data)
+
+    def post(self, request):
+        client_project = models.ClientProject.objects.get(
+            id=int(request.data.get("clientProjectId"))
+        )
+        audio_file = request.FILES.get("file")
+        description = request.data.get("description")
+
+        audio_file_name = default_storage.save(
+            "tmp/" + audio_file.name, ContentFile(audio_file.read())
+        )
+        audio_file_path = os.path.join(settings.MEDIA_ROOT, audio_file_name)
+
+        text = transcribe_audio_file(audio_file_path)
+        sentiment_score, sentiment_magnitude = analyze_sentiment_of_text(text)
+
+        # Clean up the temporary file if one was created
+        if audio_file.multiple_chunks():
+            default_storage.delete(audio_file_name)
+
+        text = transcribe_audio_file(audio_file_path)
+        sentiment_score, sentiment_magnitude = analyze_sentiment_of_text(text)
+
+        if sentiment_score > 0.2 and sentiment_magnitude > 0.2:
+            state = "Happy"
+        elif sentiment_score < -0.2 and sentiment_magnitude > 0.2:
+            state = "Sad"
+        else:
+            state = "Neutral"
+
+        """ Create client  """
+
+        models.ClientMeeting.objects.create(
+            client_project=client_project,
+            description=description,
+            client_state=state,
+            sentiment_score=sentiment_score,
+            sentiment_magnitude=sentiment_magnitude,
+            meeting_transcriped=text,
+        ).save()
 
         return Response(status=status.HTTP_200_OK)

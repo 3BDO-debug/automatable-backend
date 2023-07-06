@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from accounts.models import User, AllowedView
 from clients_management.models import ClientProject
+import cloudinary.uploader
 from . import models, serializers
 
 
@@ -75,9 +76,14 @@ class EmployeesHandler(APIView):
 class TaskHandler(APIView):
     def get(self, request):
         client_project_id = request.query_params.get("clientProjectId")
+        employee_id = request.query_params.get("employeeId")
         if client_project_id:
             client_project = ClientProject.objects.get(id=int(client_project_id))
             tasks = models.Task.objects.filter(client_project=client_project)
+            tasks_serializer = serializers.TaskSerializer(tasks, many=True)
+        elif employee_id:
+            employee = models.StaffMember.objects.get(id=int(employee_id))
+            tasks = models.Task.objects.filter(assigned_to=employee)
             tasks_serializer = serializers.TaskSerializer(tasks, many=True)
         else:
             tasks = models.Task.objects.all().order_by("-created_at")
@@ -100,9 +106,9 @@ class TaskHandler(APIView):
                 team_member_skill.id for team_member_skill in team_member.skills.all()
             ]
             if (
-                required_skills.issubset(team_member_skils)
-                and team_member.can_accept_tasks
+                required_skills.intersection(team_member_skils) and team_member.can_accept_tasks
             ):
+
                 models.Task.objects.create(
                     client_project=client_project,
                     name=request.data.get("taskName"),
@@ -111,6 +117,9 @@ class TaskHandler(APIView):
                     due_date=parse(request.data.get("dueDate")),
                     assigned_to=team_member,
                 ).save()
+
+                print("here")
+
 
                 team_member.can_accept_tasks = False
                 team_member.save()
@@ -121,3 +130,51 @@ class TaskHandler(APIView):
             status=status.HTTP_200_OK,
             data={"task_assign_failed": "Couldn't assign task to team member"},
         )
+
+
+@api_view(["POST"])
+def task_submission_handler(request):
+    submission = request.FILES.get("file")
+    task_id = request.data.get("taskId")
+    
+    task = models.Task.objects.get(id=int(task_id))
+    upload_response = cloudinary.uploader.upload(
+                submission,
+                resource_type='raw'
+    )
+    task.task_submission = upload_response['url']
+
+    task.status = "Task Submitted"
+
+    task.save()
+
+    return Response(status=status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+def tasks_submissions_handler(request):
+    tasks = models.Task.objects.filter(is_proceeded=False).exclude(task_submission__isnull=True)
+    tasks_serializer = serializers.TaskSerializer(tasks, many=True)
+
+    return Response(status=status.HTTP_200_OK, data=tasks_serializer.data)
+
+
+@api_view(["POST"])
+def task_submission_action_handler(request):
+    action = request.data.get("action")
+    task = models.Task.objects.get(id=int(request.data.get("taskId")))
+
+
+    if action == "Submission Accepted":
+        task.is_proceeded = True
+        task.status = "Submission Accepted"
+        team_member = task.assigned_to
+        team_member.can_accept_tasks = True
+        team_member.save()
+    else:
+        task.is_proceeded = False
+        task.status = "Submission Declined"
+
+    task.save()
+
+    return Response(status=status.HTTP_200_OK)

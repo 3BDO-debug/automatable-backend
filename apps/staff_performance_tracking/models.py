@@ -2,6 +2,7 @@ from django.db import models
 from django.apps import apps
 from accounts.models import User, AllowedView
 from django.utils.text import slugify
+from cloudinary.models import CloudinaryField
 
 # Create your models here.
 
@@ -59,7 +60,9 @@ class Task(models.Model):
     assigned_to = models.ForeignKey(
         StaffMember, on_delete=models.CASCADE, related_name="assigned_to", null=True
     )
+    task_submission = models.URLField(max_length=350, verbose_name="Task submission url", null=True, blank=True)
     is_proceeded = models.BooleanField(default=False, verbose_name="Task is proceeded")
+    status = models.CharField(max_length=350, verbose_name="Status")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created at")
 
     class Meta:

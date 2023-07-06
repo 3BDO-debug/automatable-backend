@@ -1,4 +1,5 @@
 from rest_framework.serializers import ModelSerializer
+from cloudinary import CloudinaryImage
 from . import models
 
 
@@ -32,8 +33,15 @@ class TaskSerializer(ModelSerializer):
 
     def to_representation(self, instance):
         data = super(TaskSerializer, self).to_representation(instance)
+        data["assigned_to_id"] = instance.assigned_to.id
+        data["assigned_to"] = {
+            "fullname": f"{instance.assigned_to.user.first_name} {instance.assigned_to.user.last_name}",
+            "profile_pic": CloudinaryImage(
+                str(instance.assigned_to.user.profile_pic)
+            ).url,
+        }
+        data["client_project_name"] = instance.client_project.project_name
         data[
-            "assigned_to"
-        ] = f"{instance.assigned_to.user.first_name} {instance.assigned_to.user.last_name}"
-    
+            "issued_by_name"
+        ] = f"{instance.issued_by.first_name} {instance.issued_by.last_name}"
         return data
